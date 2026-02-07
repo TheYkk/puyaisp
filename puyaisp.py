@@ -214,19 +214,23 @@ class Programmer(Serial):
 
     # Start bootloader
     def boot(self):
-        self.rts = False
+        # 1. Pull BOOT0 (RTS) physically HIGH
+        self.rts = False  # False often results in a High physical pin
+        # 2. Pulse NRST (DTR) physically LOW
+        self.dtr = True   # True often results in a Low physical pin
+        time.sleep(0.1)
+        # 3. Release Reset
         self.dtr = False
-        self.rts = True
-        time.sleep(0.01)
-        self.rts = False
-        time.sleep(0.01)
+        time.sleep(0.1)
 
     # Reset and disconnect
     def reset(self):
-        self.dtr = True
+        # 1. Pull BOOT0 (RTS) physically LOW
         self.rts = True
-        time.sleep(0.01)
-        self.rts = False
+        # 2. Pulse NRST (DTR)
+        self.dtr = True
+        time.sleep(0.1)
+        self.dtr = False
         self.close()
         
     # Start firmware and disconnect
