@@ -9,7 +9,7 @@ If necessary, a driver for the USB-to-serial converter used must be installed.
 Ensure that the [prerequisites](https://packaging.python.org/en/latest/tutorials/installing-packages/) for installing Python packages are met. Then execute the following command in the command line:
 
 ```
-pip install puyaisp
+pip install ykk-puyaisp
 ```
 
 ## Usage
@@ -43,7 +43,7 @@ Optional arguments:
   -f FLASH, --flash FLASH   write BIN file to flash and verify
 
 Example:
-puyaisp -f firmware.bin
+ykk-puyaisp -f firmware.bin
 ```
 
 ## Links
