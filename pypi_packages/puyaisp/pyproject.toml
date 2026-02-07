@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name         = "puyaisp"
-version      = "1.4.1"
+name         = "ykk-puyaisp"
+version      = "1.4.2"
 description  = "Programming Tool for PUYA PY32F0xx Microcontrollers"
 keywords     = ["ISP", "PUYA", "PY32F002A", "PY32F003", "PY32F030", "microcontroller"]
 dependencies = ["pyserial"]
@@ -27,7 +27,7 @@ classifiers = [
 ]
 
 [project.scripts]
-puyaisp = "puyaisp.puyaisp:_main"
+ykk-puyaisp = "puyaisp.puyaisp:_main"
 
 [project.urls]
 Homepage   = "https://wagiminator.github.io/"
