@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name         = "ykk-puyaisp"
-version      = "1.4.3"
+version      = "1.4.4"
 description  = "Programming Tool for PUYA PY32F0xx Microcontrollers"
 keywords     = ["ISP", "PUYA", "PY32F002A", "PY32F003", "PY32F030", "microcontroller"]
 dependencies = ["pyserial"]
