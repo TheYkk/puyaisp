@@ -27,7 +27,7 @@ classifiers = [
 ]
 
 [project.scripts]
-ykk-puyaisp = "puyaisp.puyaisp:_main"
+ykk-puyaisp = "ykk_puyaisp.ykk_puyaisp:_main"
 
 [project.urls]
 Homepage   = "https://wagiminator.github.io/"
