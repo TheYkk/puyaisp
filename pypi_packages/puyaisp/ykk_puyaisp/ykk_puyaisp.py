@@ -61,6 +61,158 @@ from serial import Serial
 from serial.tools.list_ports import comports
 
 # ===================================================================================
+# Chip Debug Dump
+# ===================================================================================
+
+def _hexdump(data, base_addr, bytes_per_line=16):
+    lines = []
+    for offset in range(0, len(data), bytes_per_line):
+        chunk = data[offset:offset + bytes_per_line]
+        hex_part = ' '.join('%02X' % b for b in chunk)
+        ascii_part = ''.join(chr(b) if 0x20 <= b < 0x7f else '.' for b in chunk)
+        if bytes_per_line == 16:
+            left = hex_part[:23]
+            right = hex_part[24:]
+            hex_part = '%-23s  %-23s' % (left, right)
+        lines.append('  0x%08X: %-49s |%s|' % (base_addr + offset, hex_part, ascii_part))
+    return '\n'.join(lines)
+
+def _decode_rdp(val):
+    if val == 0xAA:
+        return 'Level 0 (no protection)'
+    elif val == 0x55:
+        return 'Level 1 (read protection active)'
+    else:
+        return 'Level 2 (permanent - IRREVERSIBLE!)'
+
+def _decode_bor_level(level):
+    thresholds = {
+        0: '1.7V', 1: '1.8V', 2: '1.9V', 3: '2.0V',
+        4: '2.1V', 5: '2.2V', 6: '2.3V', 7: '2.4V',
+    }
+    return thresholds.get(level, 'unknown')
+
+def _dump_chip_info(isp):
+    sep = '=' * 50
+    print()
+    print(sep)
+    print('  PY32F0xx Chip Debug Dump')
+    print(sep)
+
+    # --- Bootloader ---
+    print()
+    print('--- Bootloader ---')
+    print('  Version      : %s' % isp.verstr)
+    print('  Chip PID     : 0x%04X%s' % (
+        isp.pid,
+        ' (PY32F0xx)' if isp.pid == PY_CHIP_PID else ' (unknown chip!)',
+    ))
+
+    # --- UID ---
+    print()
+    print('--- Unique Device ID (0x%08X) ---' % PY_UID_ADDR)
+    try:
+        uid_area = isp.readflash(PY_UID_ADDR, 128)
+        uid_w0 = int.from_bytes(uid_area[0:4], 'little')
+        uid_w1 = int.from_bytes(uid_area[4:8], 'little')
+        uid_w2 = int.from_bytes(uid_area[8:12], 'little')
+        print('  UID[31:0]    : 0x%08X' % uid_w0)
+        print('  UID[63:32]   : 0x%08X' % uid_w1)
+        print('  UID[95:64]   : 0x%08X' % uid_w2)
+        print('  Full UID     : %08X-%08X-%08X' % (uid_w2, uid_w1, uid_w0))
+        print()
+        print('  UID area hex dump (128 bytes):')
+        print(_hexdump(uid_area, PY_UID_ADDR))
+    except Exception as ex:
+        print('  ERROR: Could not read UID (%s)' % str(ex))
+
+    # --- Option Bytes ---
+    print()
+    print('--- Option Bytes (0x%08X, 16 bytes) ---' % PY_OPTION_ADDR)
+    try:
+        ob = list(isp.readflash(PY_OPTION_ADDR, 16))
+        print('  Raw hex:')
+        print(_hexdump(ob, PY_OPTION_ADDR))
+
+        rdp       = ob[0]
+        user      = ob[1]
+        n_rdp     = ob[2]
+        n_user    = ob[3]
+        sdk_strt  = ob[4]
+        sdk_end   = ob[5]
+        n_sdk_strt = ob[6]
+        n_sdk_end  = ob[7]
+        wrp       = (ob[12] << 8) | ob[13]
+        n_wrp     = (ob[14] << 8) | ob[15]
+
+        print()
+        print('  OPTR (Read Protection + User Options):')
+        print('    RDP          : 0x%02X → %s' % (rdp, _decode_rdp(rdp)))
+        rdp_comp_ok = (rdp ^ n_rdp) == 0xFF
+        print('    nRDP         : 0x%02X %s' % (n_rdp, '(valid)' if rdp_comp_ok else '(INVALID complement!)'))
+
+        bor_en   = (user >> 0) & 1
+        bor_lev  = (user >> 1) & 0x7
+        iwdg_sw  = (user >> 4) & 1
+        nrst_mode = (user >> 6) & 1
+        nboot1   = (user >> 7) & 1
+        print('    USER         : 0x%02X' % user)
+        print('      BOR_EN     : %d (%s)' % (bor_en, 'enabled' if bor_en else 'disabled'))
+        print('      BOR_LEV    : %d (%s rising threshold)' % (bor_lev, _decode_bor_level(bor_lev)))
+        print('      IWDG_SW    : %d (%s)' % (iwdg_sw, 'software watchdog' if iwdg_sw else 'hardware watchdog'))
+        print('      NRST_MODE  : %d (%s)' % (nrst_mode, 'GPIO pin' if nrst_mode else 'reset pin'))
+        print('      nBOOT1     : %d' % nboot1)
+        user_comp_ok = (user ^ n_user) == 0xFF
+        print('    nUSER        : 0x%02X %s' % (n_user, '(valid)' if user_comp_ok else '(INVALID complement!)'))
+
+        print()
+        print('  SDK Region (protected code area):')
+        print('    SDK_STRT     : 0x%02X (page %d → 0x%08X)' % (sdk_strt, sdk_strt & 0x1F, PY_FLASH_ADDR + (sdk_strt & 0x1F) * 0x1000))
+        print('    SDK_END      : 0x%02X (page %d → 0x%08X)' % (sdk_end, sdk_end & 0x1F, PY_FLASH_ADDR + (sdk_end & 0x1F) * 0x1000))
+        if (sdk_strt & 0x1F) > (sdk_end & 0x1F) or sdk_strt == 0xFF:
+            print('    → SDK disabled (start > end or 0xFF)')
+        else:
+            sdk_size = ((sdk_end & 0x1F) - (sdk_strt & 0x1F) + 1) * 4
+            print('    → SDK active: %d KB protected' % sdk_size)
+
+        print()
+        print('  Write Protection:')
+        print('    WRP          : 0x%04X' % wrp)
+        if wrp == 0xFFFF:
+            print('    → No sectors write-protected')
+        else:
+            protected = [i for i in range(16) if not (wrp & (1 << i))]
+            print('    → Protected sectors: %s' % ', '.join(str(s) for s in protected))
+            print('    → Protected range: %d KB' % (len(protected) * 4))
+        wrp_comp_ok = (wrp ^ n_wrp) == 0xFFFF
+        print('    nWRP         : 0x%04X %s' % (n_wrp, '(valid)' if wrp_comp_ok else '(INVALID complement!)'))
+
+    except Exception as ex:
+        print('  ERROR: Could not read option bytes (%s)' % str(ex))
+        print('  This usually means the chip is read-protected (locked).')
+
+    # --- Config Area ---
+    print()
+    print('--- Config Area (0x%08X) ---' % PY_CONFIG_ADDR)
+    try:
+        config = isp.readflash(PY_CONFIG_ADDR, 128)
+        print(_hexdump(config, PY_CONFIG_ADDR))
+    except Exception as ex:
+        print('  ERROR: Could not read config area (%s)' % str(ex))
+
+    # --- Memory Map ---
+    print()
+    print('--- Memory Map ---')
+    print('  Flash          : 0x%08X' % PY_FLASH_ADDR)
+    print('  SRAM           : 0x%08X' % PY_SRAM_ADDR)
+    print('  Bootloader     : 0x%08X' % PY_BOOT_ADDR)
+    print('  UID            : 0x%08X' % PY_UID_ADDR)
+    print('  Option Bytes   : 0x%08X' % PY_OPTION_ADDR)
+    print('  Config         : 0x%08X' % PY_CONFIG_ADDR)
+    print()
+    print(sep)
+
+# ===================================================================================
 # Main Function
 # ===================================================================================
 
@@ -73,11 +225,12 @@ def _main():
     parser.add_argument('-o', '--rstoption',action='store_true', help='reset option bytes')
     parser.add_argument('-G', '--nrstgpio', action='store_true', help='make nRST pin a GPIO pin')
     parser.add_argument('-R', '--nrstreset',action='store_true', help='make nRST pin a RESET pin')
+    parser.add_argument('-d', '--dump',     action='store_true', help='dump chip debug info (UID, option bytes, config)')
     parser.add_argument('-f', '--flash',    help='write BIN file to flash and verify')
     args = parser.parse_args(sys.argv[1:])
 
     # Check arguments
-    if not any( (args.rstoption, args.unlock, args.lock, args.erase, args.nrstgpio, args.nrstreset, args.flash) ):
+    if not any( (args.rstoption, args.unlock, args.lock, args.erase, args.nrstgpio, args.nrstreset, args.flash, args.dump) ):
         print('No arguments - no action!')
         sys.exit(0)
 
@@ -99,6 +252,13 @@ def _main():
             print('SUCCESS: Found PY32F0xx with bootloader v' + isp.verstr + '.')
         else:
             print('WARNING: Chip with PID 0x%04x is not a PY32F0xx!' % isp.pid)
+
+        # Dump chip debug info
+        if args.dump:
+            _dump_chip_info(isp)
+            isp.reset()
+            print('DONE.')
+            sys.exit(0)
 
         # Unlock chip
         if args.unlock:
@@ -370,6 +530,7 @@ PY_CONFIG_ADDR  = 0x1fff0f00
 PY_CMD_GET      = 0x00
 PY_CMD_VER      = 0x01
 PY_CMD_PID      = 0x02
+PY_CMD_COMMANDS = 0x03
 PY_CMD_READ     = 0x11
 PY_CMD_WRITE    = 0x31
 PY_CMD_ERASE    = 0x44
