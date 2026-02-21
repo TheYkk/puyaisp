@@ -10,10 +10,10 @@ keywords     = ["ISP", "PUYA", "PY32F002A", "PY32F003", "PY32F030", "microcontro
 dependencies = ["pyserial"]
 requires-python = ">=3.8"
 authors = [
-    { name="Stefan Wagner", email="wagiminator@web.de" },
+    { name="TheYkk", email="theykk@users.noreply.github.com" },
 ]
 maintainers = [
-    { name="Stefan Wagner", email="wagiminator@web.de" },
+    { name="TheYkk", email="theykk@users.noreply.github.com" },
 ]
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -30,6 +30,6 @@ classifiers = [
 ykk-puyaisp = "ykk_puyaisp.ykk_puyaisp:_main"
 
 [project.urls]
-Homepage   = "https://wagiminator.github.io/"
-Repository = "https://github.com/wagiminator/MCU-Flash-Tools"
-Issues     = "https://github.com/wagiminator/MCU-Flash-Tools/issues"
+Homepage   = "https://github.com/TheYkk"
+Repository = "https://github.com/TheYkk/puyaisp"
+Issues     = "https://github.com/TheYkk/puyaisp/issues"
